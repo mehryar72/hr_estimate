@@ -7,7 +7,7 @@ from config import get_config
 from dataloader import TimeSeriesDataset  # Adjust the import based on your dataset class
 from models import BiLSTMRegressor, Informer, Model3CNNRNN
 from utils import calculate_accuracy_margins  # Adjust the import based on your model class
-
+from main import test
 def load_best_model(config):
     """Load the best model from the checkpoint."""
     model_path = "./checkpoints/best_model.pth"
@@ -54,11 +54,20 @@ def evaluate_model(model, dataset, config, device):
                 
                 # Split sequence into chunks
                 chunk_predictions = []
+                chunks=[]
                 for i in range(0, seq_len - config.seq_len + 1, int(config.seq_len * (1 - config.overlap))):
                     end_idx = min(i + config.seq_len, seq_len)
                     chunk = features[:, i:end_idx, :]
-                    chunk_len = [chunk.size(1)]
-                    
+                    chunks.append(chunk)
+
+                # Ensure the last sequence is included
+                if seq_len % config.seq_len != 0:
+                    last_chunk_start = seq_len - config.seq_len
+                    last_chunk = features[:, last_chunk_start:seq_len, :]
+                    chunks.append(last_chunk)
+
+                # Process each chunk
+                for chunk in chunks:
                     pred = model(chunk)
                     chunk_predictions.append(pred.cpu().numpy())
                 
@@ -67,10 +76,14 @@ def evaluate_model(model, dataset, config, device):
                 counts = np.zeros(seq_len)
                 
                 for i, preds in enumerate(chunk_predictions):
-                    start_idx = i * int(config.seq_len * (1 - config.overlap))
-                    end_idx = start_idx + len(preds[0])
-                    final_predictions[start_idx:end_idx] += preds[0]
-                    counts[start_idx:end_idx] += 1
+                    if i==len(chunk_predictions)-1:
+                        final_predictions[-len(preds[0]):] += preds[0]
+                        counts[-len(preds[0]):] += 1
+                    else:
+                        start_idx = i * int(config.seq_len * (1 - config.overlap))
+                        end_idx = start_idx + len(preds[0])
+                        final_predictions[start_idx:end_idx] += preds[0]
+                        counts[start_idx:end_idx] += 1
                 
                 final_predictions = final_predictions / counts
                 batch_accuracy = calculate_accuracy_margins(final_predictions, labels, torch.ones_like(labels, dtype=torch.bool))
