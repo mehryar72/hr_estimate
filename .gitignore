@@ -1,2 +1,9 @@
-TrainData/
-checkpoints/
+TrainData/*
+!TrainData/.gitkeep
+checkpoints/*
+!checkpoints/.gitkeep
+ValidData/*
+!ValidData/.gitkeep
+__pycache__/
+*.py[cod]
+.env
