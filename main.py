@@ -6,8 +6,12 @@ from config import get_config
 from dataloader import TimeSeriesDataset, custom_collate_fn
 import numpy as np
 from models import *
-from utils import calculate_accuracy_margins
+from utils import *
 import torch.optim as optim
+import csv
+import hashlib
+import pandas as pd
+import shutil
 
 def get_loss_function(loss_type='mse'):
     if loss_type.lower() == 'mse':
@@ -190,11 +194,6 @@ def create_dataset_splits(data_path, train_ratio=0.8, val_ratio=0.15, test_ratio
     val_indices = indices[train_size:train_size + val_size]
     test_indices = indices[train_size + val_size:]
     
-    print(f"Total files: {total_files}")
-    print(f"Train files: {len(train_indices)}")
-    print(f"Val files: {len(val_indices)}")
-    print(f"Test files: {len(test_indices)}")
-    
     # Create datasets - test set always uses full_len=1
     train_dataset = TimeSeriesDataset(
         folder_path=data_path,
@@ -228,51 +227,31 @@ def get_scheduler(optimizer, scheduler_type, epochs, max_lr=0.01):
     elif scheduler_type == 'onecycle':
         scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=max_lr, total_steps=epochs)
     elif scheduler_type == 'reduce_on_plateau':
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=15, verbose=True)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=20,min_lr=0.00001, verbose=True)
     elif scheduler_type == 'triangular2':
-        scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=1e-4, max_lr=1e-2, step_size_up=40, mode='triangular2')
+        scheduler = optim.lr_scheduler.CyclicLR(optimizer, base_lr=1e-3, max_lr=1e-2, step_size_up=40, mode='triangular2')
     else:
         raise ValueError(f"Unknown scheduler type: {scheduler_type}")
     
     return scheduler
 
-def main(base="LSTM"):
-    config = get_config()
+
+def main(config,train_dataset, val_dataset, test_dataset,base="LSTM", continue_training=False):
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    name = "./checkpoints/" + base + ",".join([f"{v}" for k, v in vars(config).items() if k not in ['data_path']])
     
+    # Prepare CSV logging
+    log_file_path = os.path.join(name + ".csv")
+    initialize_csv(log_file_path)  # Initialize the CSV file
+
     # Create datasets using index lists
-    train_dataset, val_dataset, test_dataset = create_dataset_splits(
-        data_path=config.data_path,
-        train_ratio=0.85,
-        val_ratio=0.15,
-        # test_ratio=0.5,
-        config=config
-    )
     
-    # Create dataloaders - use collate_fn when  full_len
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=config.batch_size,
-        shuffle=True,
-        num_workers=config.num_workers,
-        collate_fn=custom_collate_fn if config.full_len else None
-    )
     
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=config.batch_size,
-        shuffle=False,
-        num_workers=config.num_workers,
-        collate_fn=custom_collate_fn if config.full_len else None
-    )
-    
-    # Create model and move to device
-    # model = BiLSTMRegressor(
-    #     hidden_size=config.hidden_size,
-    #     num_layers=config.num_layers,
-    #     dropout=config.dropout
-    # ).to(device)
-    model = Model3CNNRNN(config, base=base).to(device)
+    if base=="custom":
+        model = Informer(config).to(device)
+    else:
+        model = Model3CNNRNN(config, base=base).to(device)
     
     # Setup training
     optimizer = torch.optim.Adam(
@@ -282,8 +261,18 @@ def main(base="LSTM"):
     )
     loss_fn = get_loss_function(config.loss_type)
     
+    # Load checkpoint if continuing training
+    checkpoint_path = name+'.pth'
+    start_epoch = 0
+    if continue_training and os.path.isfile(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch']  # Start from the last saved epoch
+        print(f"Resuming training from epoch {start_epoch}...")
+
     # Get the learning rate scheduler
-    scheduler = get_scheduler(optimizer, config.scheduler, config.epochs,config.learning_rate)
+    scheduler = get_scheduler(optimizer, config.scheduler, config.epochs, config.learning_rate)
     
     # Training loop
     print("\nStarting training...")
@@ -303,6 +292,9 @@ def main(base="LSTM"):
         # Print validation loss and accuracy results
         print(f"{epoch+1:5d} {train_loss:12.6f} {val_loss:12.6f} {' | '.join(avg_accuracy.values()):>20} {'*' if val_loss < best_val_loss else ''}")
         
+        # Log the training values to the CSV file
+        log_training_values(log_file_path, epoch + 1, train_loss, val_loss, avg_accuracy)
+
         # Check if this is the best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -314,8 +306,11 @@ def main(base="LSTM"):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'train_loss': train_loss,
                 'val_loss': val_loss,
-                'val_accs': best_val_accs  # Save validation accuracies
-            }, 'best_model.pth')
+                'val_accs': best_val_accs,  # Save validation accuracies
+                "train_mean": train_mean,
+                "train_var": train_var,
+                "modeltype" : base
+            }, name + ".pth")
         
         # Step the scheduler if using ReduceLROnPlateau
         if config.scheduler == 'none':
@@ -327,16 +322,16 @@ def main(base="LSTM"):
         else:
             scheduler.step()
 
-    print("-" * 70)
-    print(f"Best validation loss: {best_val_loss:.6f} (epoch {best_epoch})")
-    print(f"Best validation accuracies: {best_val_accs}")
+    # print("-" * 70)
+    # print(f"Best validation loss: {best_val_loss:.6f} (epoch {best_epoch})")
+    # print(f"Best validation accuracies: {best_val_accs}")
 
     # Testing
     print("\nLoading best model for testing...")
-    checkpoint = torch.load('best_model.pth')
+    checkpoint = torch.load(name + ".pth")
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"Loaded model from epoch {checkpoint['epoch']}")
-    
+    test_dataset.normilise(checkpoint["train_mean"], checkpoint["train_var"])
     accuracy_results = test(model, test_dataset, config, device)
     
     print("\nTest Results:")
@@ -344,19 +339,79 @@ def main(base="LSTM"):
     for margin, percentage in accuracy_results.items():
         margin_value = margin.split('_')[1]  # Extract number from 'within_X'
         print(f"±{margin_value}: {percentage:.2f}%")
-    # Calculate final metrics
-    # mse = np.mean((predictions - targets) ** 2)
-    # mae = np.mean(np.abs(predictions - targets))
-    # rmse = np.sqrt(mse)
-    
-    # print("\nTest Results:")
-    # print(f"MSE:  {mse:.6f}")
-    # print(f"RMSE: {rmse:.6f}")
-    # print(f"MAE:  {mae:.6f}")
-    
-    # Calculate and print accuracy margins
-    # accuracy_results = calculate_accuracy_margins(predictions, targets)
-    # print_accuracy_results(accuracy_results)
+    return accuracy_results,name + ".pth"
 
 if __name__ == "__main__":
-    main(base="LSTM")
+    config = get_config()
+
+    # Create datasets using index lists
+    train_dataset, val_dataset, test_dataset = create_dataset_splits(
+        data_path=config.data_path,
+        train_ratio=0.85,
+        val_ratio=0.15,
+        config=config
+    )
+    train_mean, train_var = train_dataset.calculate_mean_variance()
+    train_dataset.normilise(train_mean, train_var)
+    val_dataset.normilise(train_mean, train_var)
+    # Create dataloaders - use collate_fn when  full_len
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=config.num_workers,
+        collate_fn=custom_collate_fn if config.full_len else None
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=config.num_workers,
+        collate_fn=custom_collate_fn if config.full_len else None
+    )
+
+    model_types = [ 'LSTM','GRU','custom']
+    accuracy_results = {}
+    checkpoint_paths = {}
+    for model_type in model_types:
+        print(f"Training model: {model_type}")
+        # Call the main function for each model type
+        results, check_path = main(config,train_dataset, val_dataset, test_dataset,base=model_type, continue_training=False) 
+
+        # Store the accuracy results
+        accuracy_results[model_type] = results
+        checkpoint_paths[model_type] = check_path
+
+    # Create a DataFrame to compare accuracy results
+    # Extract all possible margins from the keys in `accuracy_results`
+    all_margins = sorted(
+        {int(key.split('_')[1]) for result in accuracy_results.values() for key in result.keys()}
+    )
+
+    # Create a DataFrame to compare accuracy results
+    accuracy_df = pd.DataFrame(
+        {
+            model: {
+                f"+/- {margin}": results.get(f"within_{margin}", None)
+                for margin in all_margins
+            }
+            for model, results in accuracy_results.items()
+        },
+        index=[f"+/- {margin}" for margin in all_margins]
+    )
+    accuracy_df = accuracy_df.T
+    print("\nAccuracy Results:")
+    print(accuracy_df)
+    accuracy_df.to_csv("accuracy_results.csv")
+    # Determine the best model based on the accuracy results
+    best_model_type = max(accuracy_results, key=lambda k: accuracy_results[k]['within_2'])  # Change 'within_2' to your desired margin
+    print(f"\nBest model: {best_model_type}")
+
+    # Save the best model
+    best_model_path = f"./checkpoints/best_model.pth"
+    checkpoint_path = checkpoint_paths[best_model_type]
+    if os.path.isfile(checkpoint_path):
+        # Copy the best model to the new path
+        shutil.copyfile(checkpoint_path, best_model_path)
+        print(f"Best model saved as: {best_model_path}")

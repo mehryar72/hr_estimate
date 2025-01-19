@@ -1,6 +1,7 @@
 import numpy as np
 import torch
-
+import os
+import csv
 def calculate_accuracy_margins(predictions, targets, mask):
     """
     Calculate number of predictions within different margins of error, considering a mask.
@@ -46,3 +47,19 @@ def print_accuracy_results(results):
     for margin, percentage in results.items():
         margin_value = margin.split('_')[1]  # Extract number from 'within_X'
         print(f"±{margin_value}: {percentage:.2f}%")
+def initialize_csv(log_file_path):
+    """Initialize the CSV file if it does not exist or delete it if it does."""
+    if os.path.isfile(log_file_path):
+        os.remove(log_file_path)  # Delete the existing file
+    # Create a new CSV file and write the header
+    with open(log_file_path, mode='w', newline='') as log_file:
+        log_writer = csv.writer(log_file)
+        log_writer.writerow(['Epoch', 'Train Loss', 'Val Loss', 'Val Accs'])  # Header
+
+def log_training_values(log_file_path, epoch, train_loss, val_loss, avg_accuracy):
+    """Log the training values to the CSV file."""
+    with open(log_file_path, mode='a', newline='') as log_file:
+        log_writer = csv.writer(log_file)
+        # Prepare the row to log
+        log_row = [epoch, train_loss, val_loss] + list(avg_accuracy.values())
+        log_writer.writerow(log_row)

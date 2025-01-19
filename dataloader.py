@@ -27,7 +27,8 @@ class TimeSeriesDataset(Dataset):
         
         # Pre-process all data at initialization
         self.samples = []
-        
+        # self.mean = None
+        # self.var = None
         # Process each file
         for file_name in self.file_list:
             file_path = os.path.join(folder_path, file_name)
@@ -73,6 +74,30 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         # No need for conversion, already tensors
         return self.samples[idx]
+
+    def calculate_mean_variance(self):
+        """Calculate the mean and variance of each dimension over all samples."""
+        all_features = []
+        for features, labels in self.samples:
+            all_features.append(features)  # Convert to numpy for easier manipulation
+
+        all_features = torch.cat(all_features,0)
+
+        mean_features = torch.mean(all_features,0)
+        variance_features = torch.var(all_features,0)  # Variance for each dimension
+
+        # self.mean = mean_features
+        # self.var = variance_features
+        return mean_features, variance_features
+    # def set_mean_variance(self, mean, var):
+    #     """Set the mean and variance for normalization."""
+    #     self.mean = mean
+    #     self.var = var
+    def normilise(self,mean,var):
+        """Normalize all samples using the calculated mean and variance."""
+        for i in range(len(self.samples)):
+            features, labels = self.samples[i]
+            self.samples[i] = ((features - mean) / torch.sqrt(var), labels)
 
 def custom_collate_fn(batch):
     """

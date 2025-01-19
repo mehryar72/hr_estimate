@@ -31,7 +31,7 @@ def get_parser():
                       help='Hidden size of the model')
     parser.add_argument('--num_layers', type=int, default=2,
                       help='Number of layers in the model')
-    parser.add_argument('--dropout', type=float, default=0.1,
+    parser.add_argument('--dropout', type=float, default=0.01,
                       help='Dropout rate')
     
     # Training arguments
@@ -46,7 +46,7 @@ def get_parser():
 
     parser.add_argument('--hidCNN', type=int, default=32, help='Number of filters in the CNN layers')
     parser.add_argument('--hidSkip', type=int, default=64, help='Hidden size for the skip RNN')
-    parser.add_argument('--skip', type=int, default=1, help='Skip size for the skip RNN')
+    parser.add_argument('--skip', type=int, default=1, help='enable Skip')
     parser.add_argument('--last', type=int, default=64, help='Hidden size for the last fully connected layer')
     parser.add_argument('--scheduler', type=str, choices=['none','onecycle', 'reduce_on_plateau', 'triangular2'], default='none', help='Learning rate scheduler to use')
     return parser
