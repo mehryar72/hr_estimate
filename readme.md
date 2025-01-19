@@ -69,7 +69,7 @@ To train the models, follow these steps:
 ## Testing the Models
 
 To evaluate the performance of the trained models:
-
+I must have tested not chunking during infernce for faster inference to or use batching, its slow now.
 1. **Load the best model**: The `Inference.py` script loads the best model based on validation performance.
 
 2. **Prepare the test dataset**: Ensure your test dataset is placed in `ValidData` path for`Inference.py` script.
