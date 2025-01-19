@@ -2,8 +2,10 @@ TrainData/*
 !TrainData/.gitkeep
 checkpoints/*
 !checkpoints/.gitkeep
+!checkpoints/best_model.pth
 ValidData/*
 !ValidData/.gitkeep
+
 __pycache__/
 *.py[cod]
 .env

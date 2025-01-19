@@ -243,7 +243,7 @@ def main(config,train_dataset, val_dataset, test_dataset,base="LSTM", continue_t
     
     # Prepare CSV logging
     log_file_path = os.path.join(name + ".csv")
-    initialize_csv(log_file_path)  # Initialize the CSV file
+    initialize_csv(log_file_path,continue_training)  # Initialize the CSV file
 
     # Create datasets using index lists
     
@@ -264,13 +264,16 @@ def main(config,train_dataset, val_dataset, test_dataset,base="LSTM", continue_t
     # Load checkpoint if continuing training
     checkpoint_path = name+'.pth'
     start_epoch = 0
+    best_val_loss = float('inf')
+    best_val_accs = None  # To store best validation accuracies
     if continue_training and os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']  # Start from the last saved epoch
         print(f"Resuming training from epoch {start_epoch}...")
-
+        best_val_loss = checkpoint['val_loss']
+        best_val_accs = checkpoint['val_accs']
     # Get the learning rate scheduler
     scheduler = get_scheduler(optimizer, config.scheduler, config.epochs, config.learning_rate)
     
@@ -279,10 +282,10 @@ def main(config,train_dataset, val_dataset, test_dataset,base="LSTM", continue_t
     print(f"{'Epoch':>5} {'Train Loss':>12} {'Val Loss':>12} {'Val Accs':>20} {'Best':>6}")
     print("-" * 70)
     
-    best_val_loss = float('inf')
+    
     best_epoch = 0
-    best_val_accs = None  # To store best validation accuracies
-    for epoch in range(config.epochs):
+    
+    for epoch in range(start_epoch,config.epochs):
         train_loss = train_epoch(model, train_loader, optimizer, loss_fn, device, config.full_len)
         val_loss, accuracy_results = validate(model, val_loader, loss_fn, device, config.full_len)
 
@@ -377,7 +380,7 @@ if __name__ == "__main__":
     for model_type in model_types:
         print(f"Training model: {model_type}")
         # Call the main function for each model type
-        results, check_path = main(config,train_dataset, val_dataset, test_dataset,base=model_type, continue_training=False) 
+        results, check_path = main(config,train_dataset, val_dataset, test_dataset,base=model_type, continue_training=True) 
 
         # Store the accuracy results
         accuracy_results[model_type] = results

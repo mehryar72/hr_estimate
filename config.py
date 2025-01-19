@@ -35,7 +35,7 @@ def get_parser():
                       help='Dropout rate')
     
     # Training arguments
-    parser.add_argument('--epochs', type=int, default=500,
+    parser.add_argument('--epochs', type=int, default=400,
                       help='Number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=0.001,
                       help='Learning rate')

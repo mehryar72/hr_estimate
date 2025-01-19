@@ -1,10 +1,11 @@
+import json
 import os
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
 from config import get_config
 from dataloader import TimeSeriesDataset  # Adjust the import based on your dataset class
-from models import BiLSTMRegressor, Model3CNNRNN
+from models import BiLSTMRegressor, Informer, Model3CNNRNN
 from utils import calculate_accuracy_margins  # Adjust the import based on your model class
 
 def load_best_model(config):
@@ -112,6 +113,9 @@ def main():
     for margin, percentage in accuracy.items():
         margin_value = margin.split('_')[1]  # Extract number from 'within_X'
         print(f"±{margin_value}: {percentage:.2f}%")
+    #save inference results as json
+    with open('inference_results.json', 'w') as f:
+        json.dump(accuracy, f)
 
 if __name__ == "__main__":
     main()

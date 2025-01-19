@@ -47,14 +47,14 @@ def print_accuracy_results(results):
     for margin, percentage in results.items():
         margin_value = margin.split('_')[1]  # Extract number from 'within_X'
         print(f"±{margin_value}: {percentage:.2f}%")
-def initialize_csv(log_file_path):
+def initialize_csv(log_file_path,cont=False):
     """Initialize the CSV file if it does not exist or delete it if it does."""
-    if os.path.isfile(log_file_path):
+    if os.path.isfile(log_file_path) and not cont:
         os.remove(log_file_path)  # Delete the existing file
-    # Create a new CSV file and write the header
-    with open(log_file_path, mode='w', newline='') as log_file:
-        log_writer = csv.writer(log_file)
-        log_writer.writerow(['Epoch', 'Train Loss', 'Val Loss', 'Val Accs'])  # Header
+        # Create a new CSV file and write the header
+        with open(log_file_path, mode='w', newline='') as log_file:
+            log_writer = csv.writer(log_file)
+            log_writer.writerow(['Epoch', 'Train Loss', 'Val Loss', 'Val Accs'])  # Header
 
 def log_training_values(log_file_path, epoch, train_loss, val_loss, avg_accuracy):
     """Log the training values to the CSV file."""
